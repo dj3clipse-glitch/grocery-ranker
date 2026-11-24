@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grocery Price Ranker (SA)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-rose-50/30 text-slate-800 antialiased min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-rose-600 text-white shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <i data-lucide="shopping-cart" class="w-8 h-8"></i>
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight">Grocery Price Ranker</h1>
+          <p class="text-rose-100 text-sm">Rank nearby South African stores & items in Rands</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <div id="location-badge" class="bg-rose-800 text-rose-100 px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-rose-300"></i>
+          <span id="location-text">Krugersdorp (Default)</span>
+        </div>
+        <button onclick="getUserLocation()" class="bg-rose-700 hover:bg-rose-500 text-white px-3 py-1.5 rounded-full text-xs font-medium transition flex items-center gap-1.5" title="Use My Live GPS">
+          <i data-lucide="locate-fixed" class="w-3.5 h-3.5"></i> Use My GPS
+        </button>
+        <span id="basket-summary-badge" class="bg-rose-800 text-rose-100 px-3 py-1.5 rounded-full text-xs font-medium">
+          0 items
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+    
+    <!-- LEFT PANEL: Basket Management & Location Radius -->
+    <section class="lg:col-span-5 space-y-6">
+      <div class="bg-white rounded-xl shadow-sm border border-rose-100 p-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <i data-lucide="list-plus" class="w-5 h-5 text-rose-600"></i>
+            Add Item to Basket
+          </h2>
+        </div>
+        
+        <form id="add-item-form" class="space-y-4">
+          <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-2">
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Item Name</label>
+              <input type="text" id="item-name" required placeholder="e.g. Full Cream Milk 2L" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none transition" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Quantity</label>
+              <input type="number" id="item-qty" value="1" min="1" max="99" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none transition" />
+            </div>
+          </div>
+
+          <button type="submit" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-medium py-2.5 rounded-lg transition flex items-center justify-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i> Add to Basket
+          </button>
+        </form>
+      </div>
+
+      <!-- Current Basket List -->
+      <div class="bg-white rounded-xl shadow-sm border border-rose-100 p-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <i data-lucide="shopping-bag" class="w-5 h-5 text-rose-600"></i>
+            Your Basket
+          </h2>
+          <button id="clear-basket" class="text-xs text-rose-600 hover:text-rose-800 font-medium">Clear All</button>
+        </div>
+
+        <ul id="basket-items-list" class="divide-y divide-slate-100 max-h-[340px] overflow-y-auto pr-1">
+          <!-- Dynamic basket items -->
+        </ul>
+      </div>
+
+      <!-- Location Search Radius -->
+      <div class="bg-white rounded-xl shadow-sm border border-rose-100 p-6">
+        <h2 class="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
+          <i data-lucide="sliders" class="w-5 h-5 text-rose-600"></i>
+          Location Search Radius
+        </h2>
+        <div class="space-y-2">
+          <div class="flex justify-between text-sm">
+            <span class="text-slate-600">Max Distance from You:</span>
+            <span id="radius-val" class="font-bold text-rose-700">15 km</span>
+          </div>
+          <input type="range" id="radius-slider" min="2" max="50" value="15" class="w-full accent-rose-600 cursor-pointer" oninput="updateRadius(this.value)" />
+        </div>
+        <p id="store-status-note" class="text-xs text-slate-400 mt-3">
+          Showing Krugersdorp supermarkets. Click any price in the table on the right to edit it.
+        </p>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: Rankings & Comparisons -->
+    <section class="lg:col-span-7 space-y-6">
+      
+      <!-- Chart Comparison -->
+      <div class="bg-white rounded-xl shadow-sm border border-rose-100 p-6">
+        <h2 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+          <i data-lucide="bar-chart-3" class="w-5 h-5 text-rose-600"></i>
+          Total Price Comparison (ZAR)
+        </h2>
+        <div class="h-64 relative">
+          <canvas id="priceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Store Rankings (Whole Basket) -->
+      <div class="bg-white rounded-xl shadow-sm border border-rose-100 p-6">
+        <h2 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+          <i data-lucide="trophy" class="w-5 h-5 text-rose-500"></i>
+          Overall Store Rankings (Whole Basket)
+        </h2>
+        <div id="store-rankings-list" class="space-y-3">
+          <!-- Dynamic Store Rankings -->
+        </div>
+      </div>
+
+      <!-- Individual Item Price Breakdown Matrix -->
+      <div class="bg-white rounded-xl shadow-sm border border-rose-100 p-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <i data-lucide="table" class="w-5 h-5 text-rose-600"></i>
+            Individual Item Price Breakdown
+          </h2>
+          <span class="text-xs text-slate-400">Click any price to edit</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead id="item-matrix-head" class="bg-rose-50/70 border-b border-rose-100 text-slate-700 font-semibold">
+              <!-- Dynamic Store Columns -->
+            </thead>
+            <tbody id="item-matrix-body" class="divide-y divide-slate-100">
+              <!-- Dynamic Rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <script>
+    // Default GPS Coordinates: Krugersdorp, Gauteng, South Africa
+    let userCoords = { lat: -26.0858, lng: 27.7752 };
+    let maxRadiusKm = 15;
+
+    // Default Krugersdorp / West Rand Supermarkets
+    let STORES = [
+      { id: 'president', name: 'President Hyper', lat: -26.0981, lng: 27.7758 },
+      { id: 'checkers', name: 'Checkers', lat: -26.0886, lng: 27.7839 },
+      { id: 'pnp', name: 'Pick n Pay', lat: -26.0695, lng: 27.8012 },
+      { id: 'spar', name: 'SPAR', lat: -26.1035, lng: 27.7980 },
+      { id: 'woolworths', name: 'Woolworths', lat: -26.0615, lng: 27.8340 }
+    ];
+
+    // South African Rand (ZAR) pricing database
+    const PRICE_DATABASE = {
+      'Full Cream Milk 2L': { prices: { president: 34.99, checkers: 36.99, pnp: 37.99, spar: 36.50, woolworths: 41.99 } },
+      'White Bread 700g': { prices: { president: 17.99, checkers: 18.99, pnp: 18.99, spar: 18.50, woolworths: 21.99 } },
+      'Large Eggs (18pk)': { prices: { president: 58.99, checkers: 62.99, pnp: 61.99, spar: 63.50, woolworths: 69.99 } },
+      'Bananas (1kg)': { prices: { president: 19.99, checkers: 22.99, pnp: 21.99, spar: 18.99, woolworths: 26.99 } },
+      'White Maize Meal 2.5kg': { prices: { president: 36.99, checkers: 39.79, pnp: 39.99, spar: 38.99, woolworths: 44.99 } }
+    };
+
+    // Starter Basket
+    let basket = [
+      { id: 1, name: 'Full Cream Milk 2L', qty: 2 },
+      { id: 2, name: 'White Bread 700g', qty: 1 },
+      { id: 3, name: 'Large Eggs (18pk)', qty: 1 },
+      { id: 4, name: 'Bananas (1kg)', qty: 1 }
+    ];
+
+    let priceChartInstance = null;
+
+    // Haversine formula to filter stores by radius behind the scenes
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    // Initialize App
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      renderBasket();
+      updateCalculations();
+      getUserLocation();
+
+      // Form Listener
+      document.getElementById('add-item-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const nameInput = document.getElementById('item-name');
+        const qtyInput = document.getElementById('item-qty');
+
+        const name = nameInput.value.trim();
+        const qty = parseInt(qtyInput.value, 10);
+
+        if (!name) return;
+
+        // Generate realistic ZAR pricing if custom item is not in starter database
+        if (!PRICE_DATABASE[name]) {
+          const basePrice = Math.floor(Math.random() * 45) + 15;
+          const pricesObj = {};
+          STORES.forEach(s => {
+            const variance = (Math.random() * 8) - 3;
+            pricesObj[s.id] = parseFloat(Math.max(5, basePrice + variance).toFixed(2));
+          });
+          PRICE_DATABASE[name] = { prices: pricesObj };
+        }
+
+        const existingItem = basket.find(i => i.name.toLowerCase() === name.toLowerCase());
+        if (existingItem) {
+          existingItem.qty += qty;
+        } else {
+          basket.push({ id: Date.now(), name, qty });
+        }
+
+        nameInput.value = '';
+        qtyInput.value = '1';
+        renderBasket();
+        updateCalculations();
+      });
+
+      // Clear Basket
+      document.getElementById('clear-basket').addEventListener('click', () => {
+        basket = [];
+        renderBasket();
+        updateCalculations();
+      });
+    });
+
+    // Request Live GPS Location & Discover Real Nearby Supermarkets via OpenStreetMap
+    function getUserLocation() {
+      const locText = document.getElementById('location-text');
+      const statusNote = document.getElementById('store-status-note');
+      locText.textContent = "Locating...";
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            userCoords.lat = position.coords.latitude;
+            userCoords.lng = position.coords.longitude;
+            locText.textContent = `Live GPS (${userCoords.lat.toFixed(3)}, ${userCoords.lng.toFixed(3)})`;
+            statusNote.textContent = "Fetching real nearby supermarkets from OpenStreetMap...";
+            await fetchNearbySupermarkets(userCoords.lat, userCoords.lng);
+            updateCalculations();
+          },
+          () => {
+            locText.textContent = "Krugersdorp (Default)";
+            statusNote.textContent = "GPS blocked by browser—using Krugersdorp stores. Click any price to edit.";
+            updateCalculations();
+          },
+          { enableHighAccuracy: true, timeout: 8000 }
+        );
+      } else {
+        locText.textContent = "Krugersdorp (Default)";
+        updateCalculations();
+      }
+    }
+
+    // Fetch real supermarkets around the user's live coordinates using Overpass API
+    async function fetchNearbySupermarkets(lat, lng) {
+      const statusNote = document.getElementById('store-status-note');
+      try {
+        const radiusMeters = maxRadiusKm * 1000;
+        const query = `[out:json][timeout:10];node["shop"="supermarket"](around:${radiusMeters},${lat},${lng});out 12;`;
+        const response = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: query
+        });
+        const data = await response.json();
+
+        if (data.elements && data.elements.length > 0) {
+          const uniqueStores = [];
+          const seenNames = new Set();
+
+          data.elements.forEach((el, idx) => {
+            const rawName = el.tags && el.tags.name ? el.tags.name.trim() : null;
+            if (rawName && !seenNames.has(rawName.toLowerCase()) && uniqueStores.length < 6) {
+              seenNames.add(rawName.toLowerCase());
+              uniqueStores.push({
+                id: 'osm_' + idx,
+                name: rawName,
+                lat: el.lat,
+                lng: el.lon
+              });
+            }
+          });
+
+          if (uniqueStores.length >= 2) {
+            STORES = uniqueStores;
+            // Assign prices for each discovered store
+            Object.keys(PRICE_DATABASE).forEach(itemName => {
+              const existingPrices = Object.values(PRICE_DATABASE[itemName].prices);
+              const avgPrice = existingPrices.reduce((a, b) => a + b, 0) / existingPrices.length;
+              STORES.forEach(s => {
+                if (PRICE_DATABASE[itemName].prices[s.id] === undefined) {
+                  const factor = s.name.toLowerCase().includes('woolworths') ? 1.15 :
+                                 s.name.toLowerCase().includes('checkers') ? 0.96 :
+                                 s.name.toLowerCase().includes('shoprite') ? 0.92 :
+                                 (0.94 + Math.random() * 0.14);
+                  PRICE_DATABASE[itemName].prices[s.id] = parseFloat((avgPrice * factor).toFixed(2));
+                }
+              });
+            });
+            statusNote.textContent = `Found ${STORES.length} real supermarkets near your GPS. Click any price to edit.`;
+            return;
+          }
+        }
+        statusNote.textContent = "Showing local South African supermarkets. Click any price to edit.";
+      } catch (err) {
+        statusNote.textContent = "Offline mode: showing Krugersdorp supermarkets. Click any price to edit.";
+      }
+    }
+
+    function updateRadius(val) {
+      maxRadiusKm = parseInt(val, 10);
+      document.getElementById('radius-val').textContent = `${maxRadiusKm} km`;
+      updateCalculations();
+    }
+
+    // Allow user to edit any item's price at a specific store
+    function editPrice(itemName, storeId, storeName) {
+      const product = PRICE_DATABASE[itemName];
+      const currentPrice = product && product.prices[storeName] !== undefined
+        ? product.prices[storeName]
+        : (product ? product.prices[storeId] : 25.00);
+
+      const newVal = prompt(`Enter new price (in Rands) for "${itemName}" at ${storeName}:`, currentPrice.toFixed(2));
+      if (newVal !== null && !isNaN(parseFloat(newVal)) && parseFloat(newVal) >= 0) {
+        PRICE_DATABASE[itemName].prices[storeId] = parseFloat(parseFloat(newVal).toFixed(2));
+        updateCalculations();
+      }
+    }
+
+    // Render User Basket UI
+    function renderBasket() {
+      const listEl = document.getElementById('basket-items-list');
+      const badgeEl = document.getElementById('basket-summary-badge');
+      
+      const totalCount = basket.reduce((acc, item) => acc + item.qty, 0);
+      badgeEl.textContent = `${totalCount} item${totalCount !== 1 ? 's' : ''}`;
+
+      if (basket.length === 0) {
+        listEl.innerHTML = `<li class="py-8 text-center text-slate-400 text-sm">Your basket is empty. Add items above!</li>`;
+        return;
+      }
+
+      listEl.innerHTML = basket.map(item => `
+        <li class="py-3 flex justify-between items-center">
+          <div>
+            <h4 class="font-medium text-slate-800 text-sm">${item.name}</h4>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center border border-slate-200 rounded-lg overflow-hidden">
+              <button onclick="adjustQty(${item.id}, -1)" class="px-2 py-1 bg-slate-50 hover:bg-rose-50 text-slate-600 font-bold">-</button>
+              <span class="px-3 py-1 text-sm font-semibold">${item.qty}</span>
+              <button onclick="adjustQty(${item.id}, 1)" class="px-2 py-1 bg-slate-50 hover:bg-rose-50 text-slate-600 font-bold">+</button>
+            </div>
+            <button onclick="removeItem(${item.id})" class="text-slate-400 hover:text-rose-600 transition">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </li>
+      `).join('');
+
+      lucide.createIcons();
+    }
+
+    function adjustQty(id, delta) {
+      const item = basket.find(i => i.id === id);
+      if (!item) return;
+      item.qty += delta;
+      if (item.qty <= 0) {
+        basket = basket.filter(i => i.id !== id);
+      }
+      renderBasket();
+      updateCalculations();
+    }
+
+    function removeItem(id) {
+      basket = basket.filter(i => i.id !== id);
+      renderBasket();
+      updateCalculations();
+    }
+
+    // Main Calculations Engine
+    function updateCalculations() {
+      // Filter stores within user's GPS radius
+      const nearbyStores = STORES.filter(store => {
+        const dist = calculateDistance(userCoords.lat, userCoords.lng, store.lat, store.lng);
+        return dist <= maxRadiusKm;
+      });
+
+      // Compute Total Basket Costs per nearby store
+      const storeTotals = nearbyStores.map(store => {
+        let totalCost = 0;
+
+        basket.forEach(item => {
+          const product = PRICE_DATABASE[item.name];
+          const unitPrice = product && product.prices[store.id] !== undefined ? product.prices[store.id] : 25.00;
+          totalCost += unitPrice * item.qty;
+        });
+
+        return {
+          ...store,
+          totalCost: parseFloat(totalCost.toFixed(2))
+        };
+      });
+
+      // Sort Stores by Lowest Cost
+      storeTotals.sort((a, b) => a.totalCost - b.totalCost);
+
+      renderStoreRankings(storeTotals);
+      renderItemMatrix(nearbyStores);
+      renderChart(storeTotals);
+    }
+
+    // Render Overall Basket Rankings
+    function renderStoreRankings(rankings) {
+      const rankingsEl = document.getElementById('store-rankings-list');
+      
+      if (rankings.length === 0) {
+        rankingsEl.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">No stores found within ${maxRadiusKm} km of your location. Increase the search radius slider.</p>`;
+        return;
+      }
+
+      if (basket.length === 0) {
+        rankingsEl.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">Add items to view store rankings.</p>`;
+        return;
+      }
+
+      const cheapestPrice = rankings[0].totalCost;
+
+      rankingsEl.innerHTML = rankings.map((store, index) => {
+        const isBest = index === 0;
+        const diff = (store.totalCost - cheapestPrice).toFixed(2);
+
+        return `
+          <div class="p-4 rounded-xl border ${isBest ? 'border-rose-500 bg-rose-50/60' : 'border-slate-200 bg-white'} flex items-center justify-between transition">
+            <div class="flex items-center gap-4">
+              <div class="w-8 h-8 rounded-full ${isBest ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'} flex items-center justify-center font-bold text-sm">
+                #${index + 1}
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="font-bold text-slate-900">${store.name}</h3>
+                  ${isBest ? `<span class="bg-rose-600 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded-full">Cheapest Basket</span>` : ''}
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  ${isBest ? 'Lowest total price nearby' : `+R${diff} compared to cheapest store`}
+                </p>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-xl font-extrabold ${isBest ? 'text-rose-700' : 'text-slate-800'}">
+                R${store.totalCost.toFixed(2)}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Render Item Price Matrix for Nearby Stores
+    function renderItemMatrix(nearbyStores) {
+      const matrixHead = document.getElementById('item-matrix-head');
+      const matrixBody = document.getElementById('item-matrix-body');
+
+      matrixHead.innerHTML = `
+        <tr>
+          <th class="py-3 px-4">Item</th>
+          <th class="py-3 px-4 text-center">Qty</th>
+          ${nearbyStores.map(s => `<th class="py-3 px-4 text-right">${s.name}</th>`).join('')}
+        </tr>
+      `;
+
+      if (basket.length === 0 || nearbyStores.length === 0) {
+        matrixBody.innerHTML = `<tr><td colspan="${nearbyStores.length + 2}" class="py-6 text-center text-slate-400">No items or nearby stores to compare.</td></tr>`;
+        return;
+      }
+
+      matrixBody.innerHTML = basket.map(item => {
+        const product = PRICE_DATABASE[item.name];
+        
+        // Find minimum price among nearby stores
+        let minPrice = Infinity;
+        nearbyStores.forEach(s => {
+          const price = product && product.prices[s.id] !== undefined ? product.prices[s.id] : 25.00;
+          if (price < minPrice) minPrice = price;
+        });
+
+        const storeCells = nearbyStores.map(s => {
+          const unitPrice = product && product.prices[s.id] !== undefined ? product.prices[s.id] : 25.00;
+          const isLowest = Math.abs(unitPrice - minPrice) < 0.001;
+          return `
+            <td onclick="editPrice('${item.name.replace(/'/g, "\\'")}', '${s.id}', '${s.name.replace(/'/g, "\\'")}')" 
+                title="Click to edit price"
+                class="py-3 px-4 text-right font-medium cursor-pointer hover:underline ${isLowest ? 'text-rose-600 font-bold bg-rose-50/70' : 'text-slate-600'}">
+              R${unitPrice.toFixed(2)}
+            </td>
+          `;
+        }).join('');
+
+        return `
+          <tr class="hover:bg-rose-50/30">
+            <td class="py-3 px-4 font-medium text-slate-800">${item.name}</td>
+            <td class="py-3 px-4 text-center text-slate-500">${item.qty}</td>
+            ${storeCells}
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Render Chart.js Comparison
+    function renderChart(storeTotals) {
+      const ctx = document.getElementById('priceChart').getContext('2d');
+      
+      const labels = storeTotals.map(s => s.name);
+      const data = storeTotals.map(s => s.totalCost);
+
+      if (priceChartInstance) {
+        priceChartInstance.destroy();
+      }
+
+      priceChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Total Basket Cost (R)',
+            data: data,
+            backgroundColor: storeTotals.map((_, i) => i === 0 ? '#e11d48' : '#fda4af'),
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { callback: value => 'R' + value }
+            }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
